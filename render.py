@@ -9,6 +9,7 @@
 # For inquiries contact  george.drettakis@inria.fr
 #
 
+import shutil
 import torch
 from scene import Scene
 import os
@@ -20,19 +21,30 @@ from utils.general_utils import safe_state
 from argparse import ArgumentParser
 from arguments import ModelParams, PipelineParams, get_combined_args
 from gaussian_renderer import GaussianModel
+import numpy as np
 
-def render_set(model_path, name, iteration, views, gaussians, pipeline, background, kernel_size):
+def render_set(dataset, name, iteration, views, gaussians, pipeline, background, kernel_size):
+    model_path = dataset.model_path
+    source_path = dataset.source_path
+
     render_path = os.path.join(model_path, name, "ours_{}".format(iteration), "renders")
     gts_path = os.path.join(model_path, name, "ours_{}".format(iteration), "gt")
 
-    makedirs(render_path, exist_ok=True)
-    makedirs(gts_path, exist_ok=True)
+    makedirs(os.path.join(render_path, "rgb"), exist_ok=True)
+    makedirs(os.path.join(render_path, "depth"), exist_ok=True)
+    makedirs(os.path.join(gts_path, "rgb"), exist_ok=True)
+    makedirs(os.path.join(gts_path, "depth"), exist_ok=True)
 
     for idx, view in enumerate(tqdm(views, desc="Rendering progress")):
-        rendering = render(view, gaussians, pipeline, background, kernel_size=kernel_size)["render"]
+        render_package = render(view, gaussians, pipeline, background, kernel_size=kernel_size)
+        rendering = render_package['render']
+        depth = render_package['median_depth'].squeeze(0)
         gt = view.original_image[0:3, :, :]
-        torchvision.utils.save_image(rendering, os.path.join(render_path, '{0:05d}'.format(idx) + ".png"))
-        torchvision.utils.save_image(gt, os.path.join(gts_path, '{0:05d}'.format(idx) + ".png"))
+        torchvision.utils.save_image(rendering, os.path.join(render_path, "rgb", view.image_name + ".png"))
+        torchvision.utils.save_image(gt, os.path.join(gts_path, "rgb", view.image_name + ".png"))
+        shutil.copy(os.path.join(source_path, "synthetic", "raw_depths", view.image_name + "_depth.npy"), os.path.join(gts_path, "depth"))
+        np.save(os.path.join(render_path, "depth", view.image_name + "_depth.npy"), depth.cpu().numpy())
+        
 
 def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParams, skip_train : bool, skip_test : bool):
     with torch.no_grad():
@@ -43,10 +55,10 @@ def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParam
         background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
 
         if not skip_train:
-             render_set(dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background, dataset.kernel_size)
+             render_set(dataset, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background, dataset.kernel_size)
 
         if not skip_test:
-             render_set(dataset.model_path, "test", scene.loaded_iter, scene.getTestCameras(), gaussians, pipeline, background, dataset.kernel_size)
+             render_set(dataset, "test", scene.loaded_iter, scene.getTestCameras(), gaussians, pipeline, background, dataset.kernel_size)
 
 if __name__ == "__main__":
     # Set up command line argument parser

@@ -54,6 +54,7 @@ class ModelParams(ParamGroup):
         self._resolution = -1
         self._white_background = False
         self.data_device = "cuda"
+        self.render_items = ['RGB', 'Alpha', 'Depth', 'Normal', 'Curvature', 'Edge']
         self.eval = False
         self.use_decoupled_appearance = False
         self.use_coord_map = False
