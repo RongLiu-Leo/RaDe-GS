@@ -22,6 +22,7 @@ from argparse import ArgumentParser
 from arguments import ModelParams, PipelineParams, get_combined_args
 from gaussian_renderer import GaussianModel
 import numpy as np
+from PIL import Image
 
 def render_set(dataset, name, iteration, views, gaussians, pipeline, background, kernel_size):
     model_path = dataset.model_path
@@ -38,11 +39,19 @@ def render_set(dataset, name, iteration, views, gaussians, pipeline, background,
     for idx, view in enumerate(tqdm(views, desc="Rendering progress")):
         render_package = render(view, gaussians, pipeline, background, kernel_size=kernel_size)
         rendering = render_package['render']
-        depth = render_package['median_depth'].squeeze(0)
         gt = view.original_image[0:3, :, :]
         torchvision.utils.save_image(rendering, os.path.join(render_path, "rgb", view.image_name + ".png"))
         torchvision.utils.save_image(gt, os.path.join(gts_path, "rgb", view.image_name + ".png"))
-        shutil.copy(os.path.join(source_path, "synthetic", "raw_depths", view.image_name + "_depth.npy"), os.path.join(gts_path, "depth"))
+
+        depth = render_package['median_depth'].squeeze(0)
+        gt_depth = np.load(os.path.join(source_path, "synthetic", "raw_depths", view.image_name + "_depth.npy"))
+        print( depth.shape, gt_depth.shape)
+        gt_depth = np.array(
+            Image.fromarray(gt_depth).resize((depth.shape[1], depth.shape[0])),
+            dtype=np.float32
+        )
+        print( depth.shape, gt_depth.shape)
+        np.save(os.path.join(gts_path, "depth", view.image_name + "_depth.npy"), gt_depth)
         np.save(os.path.join(render_path, "depth", view.image_name + "_depth.npy"), depth.cpu().numpy())
         
 
